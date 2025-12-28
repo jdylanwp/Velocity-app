@@ -8,26 +8,28 @@ export async function middleware(request: NextRequest) {
     },
   });
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return response;
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll() {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Update request cookies for the current server components
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          // Create a new response to set headers
           response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request,
           });
-          // Set response cookies for the browser
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
@@ -36,18 +38,28 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // This is critical: it refreshes the session if needed
-  const { data: { user } } = await supabase.auth.getUser();
+  // This refreshes the session if expired and verifies the user
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const protectedRoutes = ['/admin', '/saved', '/settings', '/hunter'];
   const isProtectedRoute = protectedRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
   );
 
+  // Redirect to login if accessing a protected route without a session
   if (isProtectedRoute && !user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', request.nextUrl.pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Redirect to home if accessing auth pages while logged in
+  if ((request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup') && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
