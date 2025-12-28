@@ -17,12 +17,17 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
+          // Update request cookies for the current server components
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
+          // Create a new response to set headers
           response = NextResponse.next({
-            request,
+            request: {
+              headers: request.headers,
+            },
           });
+          // Set response cookies for the browser
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
@@ -31,9 +36,8 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // This is critical: it refreshes the session if needed
+  const { data: { user } } = await supabase.auth.getUser();
 
   const protectedRoutes = ['/admin', '/saved', '/settings', '/hunter'];
   const isProtectedRoute = protectedRoutes.some((route) =>
@@ -44,12 +48,6 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', request.nextUrl.pathname);
-    return NextResponse.redirect(url);
-  }
-
-  if ((request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup') && user) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
